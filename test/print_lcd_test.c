@@ -1,38 +1,10 @@
 /*
- *                             TESTING FOR AVR-LCD
- *
- * File        : LCD_TEST.C
+ * File        : PRINT_LCD_TEST.C
  * Author      : Joshua Fain
  * Host Target : ATMega1280
  * LCD         : Gravitech 20x4 LCD using HD44780 LCD controller
  * License     : MIT
  * Copyright (c) 2020, 2021
- *
- * Contains main(). Used to test the AVR-LCD Module. This test implements an 
- * interface that allows direct typing from a keyboard via the AVRs USART0 port
- * and redirects the characters entered to the LCD screen.
- *
- * NOTE:
- * Before simply sending a character to the LCD, the test program performs
- * several checks, such as checking to see wheter control or display 
- * character(s) were entered. It also tests to see if the address counter
- * should be adjusted. The way the LCD itself works, when the address counter
- * is pointing at the last address of a line, the next sequential address would
- * actually point to the first position 2 lines down, with the exception of the
- * last line. Thus, when at the end of a line and navigating to the next 
- * position, either by entering a character or pressing the right arrow key,
- * then the address counter will be updated by software to point to the first 
- * DDRAM address of the next line, rather than the next sequential DDRAM 
- * address. Similarly, for when moving backwards/decrementing. The opposite
- * should occur. 
- * 
- * The display lines map to the DDRAM addresses as follows:
- *
- * Line 1: DDRAM Address - 0x00 - 0x13
- * Line 2: DDRAM Address - 0x40 - 0x53
- * Line 3: DDRAM Address - 0x14 - 0x27
- * Line 4: DDRAM Address - 0x54 - 0x67
- *
  */
 
 #include <stdint.h>
@@ -61,60 +33,25 @@
 #define CLEAR                0x03      // ctrl + c
 #define R_DISP_SHIFT         0x08      // ctrl + d
 
-// for left and right arrows
-/*#define ARROW_CTRL_2         0x1B
-#define ARROW_CTRL_1         0x5B
-#define L_ARROW              0x44
-#define R_ARROW              0x43
-*/
+#define MODULE_INIT_SUCCESS  0
+#define MODULE_INIT_FAILED   1
+
+//navigation macros
+#define NEXT   'n'               // next entry in the directory
+#define SELECT 's'               // select current displayed item
+#define UP     'u'               // up a directory level. e.g. songs --> albums
+
+
 void PrintToLCD(char * ln);
+uint8_t InitModules(void);
 
 int main(void)
 {
-  // --------------------------------------------------------------------------
-  //                                 INITIALIZATIONS - USART, SPI, LCD, SD CARD
-  
-  // usart required for character entry
-  usart_init();
-  spi_masterInit();
-
-  // Ensure LCD is initialized.
-  lcd_init();
-
-  // Turn display and cursor on and set cursor to blink 
-  lcd_displayCtrl (DISPLAY_ON | CURSOR_ON | BLINKING_ON);
-
-  // SD card initialization
-  CTV *ctvPtr = malloc(sizeof(CTV));             // SD card type & version
-  uint32_t sdInitResp;                           // SD card init error response
-
-  // Attempt SD card init up to 5 times.
-  for (uint8_t i = 0; i < 5; i++)
-  {
-    print_str ("\n\n\r >> SD Card Initialization Attempt "); 
-    print_dec(i);
-    sdInitResp = sd_spiModeInit (ctvPtr);        // init SD card into SPI mode
-
-    if (sdInitResp != 0)
-    {    
-      print_str (": FAILED TO INITIALIZE SD CARD.");
-      print_str (" Initialization Error Response: "); 
-      sd_printInitError (sdInitResp);
-      print_str (", R1 Response: "); 
-      sd_printR1 (sdInitResp);
-    }
-    else
-    {   
-      print_str (": SD CARD INITIALIZATION SUCCESSFUL");
-      break;
-    }
-  }
-  
-  if (sdInitResp == 0)
+  // initialize usart, spi, lcd, and sd card and only continue if success.
+  if (InitModules() == MODULE_INIT_SUCCESS)
   {
     uint8_t err;                                 // for returned errors
     
-
     //
     // Create and set Bios Parameter Block instance. Members of this instance
     // are used to calculate where on the physical disk volume, the FAT 
@@ -135,8 +72,11 @@ int main(void)
     // the current working directory. The instance should be initialized to 
     // the root directory with fat_setDirToRoot() prior to using anywhere else.
     //
-    FatDir *cwdPtr = malloc(sizeof(FatDir));
-    fat_setDirToRoot (cwdPtr, bpbPtr);
+//    FatDir *artistDirPtr = malloc(sizeof(FatDir));
+//    FatDir *albumsDirPtr = malloc(sizeof(FatDir));
+//    FatDir *songsDirPtr  = malloc(sizeof(FatDir));
+    FatDir *cwdPtr  = malloc(sizeof(FatDir));
+    //fat_setDirToRoot (cwdPtr, bpbPtr);
 
 
     // 
@@ -146,15 +86,157 @@ int main(void)
     // the FatDir instance (dir).
     //
     FatEntry * entPtr = malloc(sizeof(FatEntry));
-    fat_initEntry (entPtr, bpbPtr);
+    // fat_initEntry (entPtr, bpbPtr);
     usart_transmit('\n');
     usart_transmit('\r');
 
-
     uint8_t fatErr;
+    char c;
 
+    // artist set to root directory. Should never change.
+    //fat_setDirToRoot (cwdPtr, bpbPtr);
+    while (1)
+    {
+      
+      //                                    ARTISTS
+      //
+      
+      // artist set to root directory.
+      fat_setDirToRoot (cwdPtr, bpbPtr);
+      fat_initEntry (entPtr, bpbPtr);
+
+      while (1)
+      {
+        print_str("\n\rARTISTS");
+        fatErr = fat_setNextEntry (cwdPtr, entPtr, bpbPtr);
+        if (fatErr != END_OF_DIRECTORY)
+        {
+          // only print hidden entries if the HIDDEN filter flag is been set.
+          if (!(entPtr->snEnt[11] & HIDDEN_ATTR))
+          {
+            // if entry not pointing to current director or parent directory entry.
+            if (strcmp(entPtr->snStr, ".") && strcmp(entPtr->snStr, ".."))
+            {
+              PrintToLCD(entPtr->lnStr);
+              usart_transmit('\n');
+              usart_transmit('\r');
+            }
+
+
+            //                               ABLUMS
+            //
+            c = usart_receive();
+            if (c == UP)
+              break;
+            else if (c == SELECT && entPtr->snEnt[11] & DIR_ENTRY_ATTR)
+            {
+              fat_setDir (cwdPtr, entPtr->lnStr, bpbPtr);
+              // set fat entry to first entry of new directory
+              fat_initEntry (entPtr, bpbPtr);
+              entPtr->snEntClusIndx = cwdPtr->fstClusIndx;
+
+              while (1)
+              {
+                print_str("\n\rALBUMS");
+                fatErr = fat_setNextEntry (cwdPtr, entPtr, bpbPtr);
+                if (fatErr != END_OF_DIRECTORY)
+                {
+                  // only print hidden entries if the HIDDEN filter flag is been set.
+                  if (!(entPtr->snEnt[11] & HIDDEN_ATTR))
+                  {
+                    // if entry not pointing to current director or parent directory entry.
+                    if (strcmp(entPtr->snStr, ".") && strcmp(entPtr->snStr, ".."))
+                    {
+                      PrintToLCD(entPtr->lnStr);
+                      usart_transmit('\n');
+                      usart_transmit('\r');
+                    }
+
+                    //                               SONGS
+                    //
+                    c = usart_receive();
+                    if (c == UP)
+                    {
+                      fat_setDir (cwdPtr, "..", bpbPtr);
+                      fat_initEntry (entPtr, bpbPtr);
+                      entPtr->snEntClusIndx = cwdPtr->fstClusIndx;
+                      break;
+                    }
+                    else if (c == SELECT && entPtr->snEnt[11] & DIR_ENTRY_ATTR)
+                    {
+                      fat_setDir (cwdPtr, entPtr->lnStr, bpbPtr);
+                      // set fat entry to first entry of new directory
+                      fat_initEntry (entPtr, bpbPtr);
+                      entPtr->snEntClusIndx = cwdPtr->fstClusIndx;
+
+                      while (1)
+                      {
+                        print_str("\n\rSONGS");
+                        fatErr = fat_setNextEntry (cwdPtr, entPtr, bpbPtr);
+                        if (fatErr != END_OF_DIRECTORY)
+                        {
+                          // only print hidden entries if the HIDDEN filter flag is been set.
+                          if (!(entPtr->snEnt[11] & HIDDEN_ATTR))
+                          {
+                            // if entry not pointing to current director or parent directory entry.
+                            if (strcmp(entPtr->snStr, ".") && strcmp(entPtr->snStr, ".."))
+                            {
+                              PrintToLCD(entPtr->lnStr);
+                              usart_transmit('\n');
+                              usart_transmit('\r');
+                            }
+                            c = usart_receive();
+                            if (c == UP)
+                            {
+                              fat_setDir (cwdPtr, "..", bpbPtr);
+                              fat_initEntry (entPtr, bpbPtr);
+                              entPtr->snEntClusIndx = cwdPtr->fstClusIndx;
+                              break;                            
+                            }
+                            else if (c == SELECT && !(entPtr->snEnt[11] & DIR_ENTRY_ATTR))
+                            {
+                              print_str("Playing Song: ");
+                              PrintToLCD(entPtr->lnStr);
+                            }
+                            // Songs else
+                            else
+                              continue;
+                          }
+                        }
+                        // reset for song loop
+                        else
+                        {
+                          fat_initEntry (entPtr, bpbPtr);
+                          entPtr->snEntClusIndx = cwdPtr->fstClusIndx;
+                        }
+                      }
+                    }
+                    // Albums else
+                    else
+                      continue;
+                  }
+                }
+                // reset for album loop
+                else
+                {
+                  fat_initEntry (entPtr, bpbPtr);
+                  entPtr->snEntClusIndx = cwdPtr->fstClusIndx;
+                }
+              }
+            }
+            // Artists else
+            else
+              continue;
+          }
+        }
+        else
+          break;
+      }
+    }
+/*
     while(1)
     {
+      // search artists
       fatErr = fat_setNextEntry (cwdPtr, entPtr, bpbPtr);
       if (fatErr != END_OF_DIRECTORY)
       {     
@@ -183,10 +265,45 @@ int main(void)
         entPtr->snEntClusIndx = cwdPtr->fstClusIndx;
       }
     }
+*/
   }
+  else
+    print_str("\n\rFailed to initialize");
+
   return 0;
 }
 
+
+
+
+
+uint8_t InitModules(void)
+{
+  // usart required for character entry
+  usart_init();
+  spi_masterInit();
+
+  // Ensure LCD is initialized.
+  lcd_init();
+
+  // Turn display and cursor on and set cursor to blink 
+  lcd_displayCtrl (DISPLAY_ON | CURSOR_ON | BLINKING_ON);
+
+  // SD card initialization
+  CTV *ctvPtr = malloc(sizeof(CTV));             // SD card type & version
+  uint32_t sdInitResp;                           // SD card init error response
+
+  // Attempt SD card init up to 5 times.
+  for (uint8_t i = 0; i < 5; i++)
+  {
+    sdInitResp = sd_spiModeInit (ctvPtr);        // init SD card into SPI mode
+    if (sdInitResp != 0)   
+      continue;
+    else
+      return MODULE_INIT_SUCCESS;
+  }
+  return MODULE_INIT_FAILED;
+}
 
 void PrintToLCD(char *ln)
 {
