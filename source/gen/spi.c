@@ -1,18 +1,18 @@
 /*
- * File    : SPI.C
- * Version : 0.0.0.1 
- * Author  : Joshua Fain
- * Target  : ATMega1280
- * License : MIT
- * Copyright (c) 2020
+ * File       : SPI.C
+ * Version    : 1.0 
+ * Target     : ATMega1280
+ * Compiler   : AVR-GCC 9.3.0
+ * Downloader : AVRDUDE 6.3
+ * License    : GNU GPLv3
+ * Author     : Joshua Fain
+ * Copyright (c) 2020, 2021
  * 
  * Implementation of SPI.H
  */
 
-#include <stdint.h>
 #include <avr/io.h>
 #include "spi.h"
-
 
 /*
  ******************************************************************************
@@ -31,11 +31,11 @@
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void spi_masterInit (void)
+void spi_MasterInit(void)
 {
   // Set MOSI, SCK, SS pins of SPI port as outputs.
-  DDR_SPI =  1 << DD_MOSI | 1 << DD_SCK | 1 << DD_SS0 | 1 << DD_SS1;
+  DDR_SPI =  1 << DD_MOSI | 1 << DD_SCK 
+             | 1 << DD_SS0 | 1 << DD_SS1 | 1 << DD_SS2;
 
   // Make sure SS pins are high (not asserted) before initializing SPI.
   SPI_PORT = 1 << SS0 | 1 << SS1;
@@ -51,7 +51,6 @@ void spi_masterInit (void)
   SPSR &= ~(1 << SPI2X);
 }
 
-
 /*
  * ----------------------------------------------------------------------------
  *                                                             SPI RECEIVE BYTE
@@ -63,12 +62,10 @@ void spi_masterInit (void)
  * Returns     : byte received by the SPI port.
  * ----------------------------------------------------------------------------
  */
-
-uint8_t spi_masterReceive (void)
+uint8_t spi_MasterReceive(void)
 { 
   return SPDR;
 }
-
 
 /*
  * ----------------------------------------------------------------------------
@@ -81,13 +78,12 @@ uint8_t spi_masterReceive (void)
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void spi_masterTransmit (uint8_t byte)
+void spi_MasterTransmit(uint8_t byte)
 {
   // load byte into SPDR to transmit data.
   SPDR = byte;
 
   // wait for data transmission to complete.
-  while ( !(SPSR & (1 << SPIF)))
-  ; 
+  while ( !(SPSR & 1 << SPIF))
+    ;
 }

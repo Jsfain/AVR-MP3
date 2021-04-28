@@ -1,15 +1,16 @@
 /*
- * File    : SD_SPI_RWE.H
- * Version : 0.0.0.1 
- * Author  : Joshua Fain
- * Target  : ATMega1280
- * License : MIT
- * Copyright (c) 2020-2021
+ * File       : SD_SPI_RWE.H
+ * Version    : 1.0
+ * Target     : ATMega1280
+ * Compiler   : AVR-GCC 9.3.0
+ * Downloader : AVRDUDE 6.3
+ * License    : GNU GPLv3
+ * Author     : Joshua Fain
+ * Copyright (c) 2020, 2021
  * 
  * Implementation of SD_SPI_RWE.H
  */
 
-#include <stdint.h>
 #include <avr/io.h>
 #include "usart0.h"
 #include "prints.h"
@@ -17,24 +18,22 @@
 #include "sd_spi_base.h"
 #include "sd_spi_rwe.h"
 
-
 /*
  ******************************************************************************
- *                                   FUNCTIONS   
+ *                                 FUNCTIONS   
  ******************************************************************************
  */
 
 /*
  * For the following read, write, and erase block functions, the returned error
  * response values can be read by their corresponding print error function. For
- * example, the returned value of sd_readSingleBlock() can be read by passing
- * it to sd_printReadError(). These print functions will read the upper byte of
- * of the returned error response. If in the error response the R1_ERROR flag 
- * is set in the upper byte, then the lower byte (i.e. the R1 Response portion
- * of the error response) contains at least one flag that has been set which 
- * should then be read by passing it to sd_printR1() in SD_SPI_BASE. 
+ * example, the returned value of sd_ReadSingleBlock() can be read by passing
+ * it to sd_PrintReadError(). These print functions will read the upper byte of
+ * the returned error response. If in the error response the R1_ERROR flag is 
+ * set in the upper byte, then the lower byte (i.e. the R1 Response portion of
+ * the error response) contains at least one flag that has been set which 
+ * should then be read by passing it to sd_PrintR1() in SD_SPI_BASE. 
  */ 
-
 
 /*
  * ----------------------------------------------------------------------------
@@ -42,304 +41,269 @@
  * 
  * Description : Reads a single data block from the SD card into an array.     
  * 
- * Arguments   : blckAddr     address of the data block on the SD card that    
+ * Arguments   : blckAddr   - address of the data block on the SD card that    
  *                            will be read into the array.
- * 
- *               blckArr      pointer to the array to be loaded with the       
+ *               blckArr    - pointer to the array to be loaded with the       
  *                            contents of the data block at blckAddr. Must be  
  *                            length BLOCK_LEN.
  * 
  * Returns     : Read Block Error (upper byte) and R1 Response (lower byte).   
  * ----------------------------------------------------------------------------
  */
-
-uint16_t sd_readSingleBlock (uint32_t blckAddr, uint8_t * blckArr)
+uint16_t sd_ReadSingleBlock(uint32_t blckAddr, uint8_t blckArr[])
 {
-  uint8_t timeout = 0;
-  uint8_t r1 = 0;                                
+  uint8_t r1;                               // for R1 responses
 
+  // request contents of a single data block at blckAddr on the SD card.
   CS_SD_LOW;
-  sd_sendCommand (READ_SINGLE_BLOCK, blckAddr);            //CMD17
-  r1 = sd_getR1();
-
-  if (r1 > 0)
+  sd_SendCommand(READ_SINGLE_BLOCK, blckAddr);
+  r1 = sd_GetR1();
+  if (r1 != OUT_OF_IDLE)
   {
     CS_SD_HIGH;
     return (R1_ERROR | r1);
   }
 
-  if (r1 == 0)
-  {
-    // wait for Start Block Token
-    while (sd_receiveByteSPI() != 0xFE) 
+  //
+  // loop until the 'Start Block Token' has been received from the SD card,
+  // which indicates data from requested blckAddr is about to be sent.
+  //
+  for (uint8_t timeout = 0; sd_ReceiveByteSPI() != START_BLOCK_TKN; ++timeout)
+    if (timeout >= TIMEOUT_LIMIT)
     {
-      timeout++;
-      if (timeout > 0xFE) 
-      { 
-        CS_SD_HIGH;
-        return (START_TOKEN_TIMEOUT | r1);
-      }
+      CS_SD_HIGH;
+      return (START_TOKEN_TIMEOUT | r1);
     }
 
-    // Load SD card block into the array.         
-    for (uint16_t i = 0; i < BLOCK_LEN; i++)
-      blckArr[i] = sd_receiveByteSPI();
+  // Load SD card block into the array.         
+  for (uint16_t byte = 0; byte < BLOCK_LEN; ++byte)
+    blckArr[byte] = sd_ReceiveByteSPI();
 
-    // Get CRC
-    for (uint8_t i = 0; i < 2; i++)
-      sd_receiveByteSPI();
-    
-    // clear any remaining data from the SPDR
-    sd_receiveByteSPI();          
-  }
+  // Get 16-bit CRC. Don't need.
+  sd_ReceiveByteSPI();
+  sd_ReceiveByteSPI();
+  
+  // clear any remaining data from the SPDR
+  sd_ReceiveByteSPI();          
+
   CS_SD_HIGH;
-
   return (READ_SUCCESS | r1);
 }
-
 
 /*
  * ----------------------------------------------------------------------------
  *                                                           PRINT SINGLE BLOCK
  * 
- * Description : Prints the contents of a single SD card data block, previously 
- *               loaded into an array by sd_readSingleBlock(), to the screen. 
+ * Description : Prints the contents of a single SD card data block to the 
+ *               screen, previously loaded into an array by sd_ReadSingleBlock. 
  *               The block's contents will be printed to the screen in rows of
  *               16 bytes, columnized as (Addr)OFFSET | HEX | ASCII.
  * 
- * Arguments   : blckArr     pointer to an array holding the contents of the 
+ * Arguments   : blckArr   - pointer to an array holding the contents of the 
  *                           block to be printed to the screen. Must be of 
  *                           length BLOCK_LEN.
  * 
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void sd_printSingleBlock (uint8_t * blckArr)
+void sd_PrintSingleBlock(const uint8_t blckArr[])
 {
-  uint16_t offset = 0;
-  uint16_t space = 0;
-  uint16_t row = 0;
-  
-  print_str ("\n\n\r BLOCK OFFSET\t\t\t\t   HEX\t\t\t\t\t     ASCII\n\r");
-  for (; row < BLOCK_LEN/16; row++)
-  {
-    print_str ("\n\r   ");
+  const uint8_t radix = 16;                 // hex
 
-    // print row offset address
-    if (offset < 0x10)
-    {
-      print_str ("0x00"); 
-      print_hex (offset);
-    }
-    else if (offset < 0x100)
-    {
-      print_str ("0x0"); 
-      print_hex (offset);
-    }
-    else if (offset < 0x1000)
-    {
-      print_str ("0x"); 
-      print_hex (offset);
-    }
-    
-    // print HEX values of the block's row at offset
-    print_str ("\t ");
-    space = 0;
-    for (offset = row*16; offset < row*16 + 16; offset++)
+  // print column headings with spaces added for formatting
+  print_Str("\n\n\r "
+            "BLOCK OFFSET                       "
+            "HEX DATA                             "
+            "ASCII DATA\n\r");
+
+  // print constents in the data block array
+  for (uint16_t row = 0, offset = 0; row < BLOCK_LEN / radix; ++row)
+  {
+    // Print row address offset. Loop is used to print any needed prefixed 0's
+    print_Str("\n\r     0x");
+    for (uint16_t os = offset + 1; os < 0x100; os *= radix)
+      usart_Transmit('0');
+    print_Hex(offset);
+
+    // print HEX values of the block's offset row
+    print_Str("   ");
+    for (offset = row * radix; offset < row * radix + radix; ++offset)
     {
       // every 4 bytes print an extra space.
-      if (space % 4 == 0) 
-        print_str (" ");
-      print_str (" ");
+      if (offset % 4 == 0) 
+        usart_Transmit(' ');
+      usart_Transmit(' ');
 
-      // if value is not two hex digits, then first print a 0. 
+      // if value is not two hex digits, prefix a 0. 
       if (blckArr[offset] < 0x10)
-        usart_transmit ('0');
+        usart_Transmit('0');
 
       // print value in hex.
-      print_hex (blckArr[offset]);
-      space++;
+      print_Hex(blckArr[offset]);
     }
     
-    // print ASCII values of the block's row at offset
-    print_str ("\t\t");
-    offset -= 16;
-    for (offset = row*16; offset < row*16 + 16; offset++)
+    //
+    // print the printable std. ASCII values in the block's offset row. If an 
+    // ascii value less than the printable range is encountered, then a space
+    // is printed. If an ascii values greater than the highest printable value
+    // is encountered then a period ('.') is printed. 
+    //
+    print_Str("     ");
+    for (offset = row * radix; offset < row * radix + radix; ++offset)
     {
-      if (blckArr[offset] < 32) 
-        usart_transmit ( ' ' ); 
-      else if (blckArr[offset] < 128)
-        usart_transmit (blckArr[offset]);
+      if (blckArr[offset] < ASCII_PRINT_CHAR_FIRST)    
+        usart_Transmit(' '); 
+      else if (blckArr[offset] <= ASCII_PRINT_CHAR_LAST)
+        usart_Transmit(blckArr[offset]);
       else 
-        usart_transmit ('.');
+        usart_Transmit('.');
     }
   }    
-  print_str ("\n\n\r");
 }
  
-
 /*
  * ----------------------------------------------------------------------------
  *                                                           WRITE SINGLE BLOCK
  * 
  * Description : Writes the values in an array to a single SD card data block.
  * 
- * Arguments   : blckAddr     address of the data block on the SD card that 
+ * Arguments   : blckAddr   - address of the data block on the SD card that 
  *                            will be written to.
- *       
- *               dataArr      pointer to an array that holds the data contents
+ *               dataArr    - pointer to an array that holds the data contents
  *                            that will be written to the block at blckAddr on
  *                            the SD card. Must be of length BLOCK_LEN.
  * 
  * Returns     : Write Block Error (upper byte) and R1 Response (lower byte).
  * ----------------------------------------------------------------------------
  */
-
-uint16_t sd_writeSingleBlock (uint32_t blckAddr, uint8_t * dataArr)
+uint16_t sd_WriteSingleBlock(uint32_t blckAddr, const uint8_t dataArr[])
 {
-  uint8_t  r1;
-  uint16_t timeout = 0;
-  uint8_t  dataRespTkn;
-  uint8_t  dataTknMask = 0x1F;
+  uint8_t  r1;                              // for R1 response
+  uint8_t  dataRespTkn = 0;
 
-
+  // send the Write Single Block command to write data to blckAddr on SD card.
   CS_SD_LOW;    
-  sd_sendCommand (WRITE_BLOCK, blckAddr);                  // CMD24
-  r1 = sd_getR1();
-  if (r1 > 0)
+  sd_SendCommand (WRITE_BLOCK, blckAddr);
+  if ((r1 = sd_GetR1()) != OUT_OF_IDLE)
   {
     CS_SD_HIGH;
     return (R1_ERROR | r1);
   }
 
-  if (r1 == 0)
+  // send Start Block Token (0xFE) to initiate data transfer
+  sd_SendByteSPI(START_BLOCK_TKN); 
+
+  // send data to write to SD card.
+  for (uint16_t pos = 0; pos < BLOCK_LEN; ++pos) 
+    sd_SendByteSPI (dataArr[pos]);
+
+  // Send 16-bit CRC. CRC should be off (default), so these do not matter.
+  sd_SendByteSPI(DMY_TKN);
+  sd_SendByteSPI(DMY_TKN);
+  
+  // loop until valid data response token received or function exits on timeout
+  for (uint8_t timeout = 0; 
+       dataRespTkn != DATA_ACCEPTED_TKN
+       && dataRespTkn != CRC_ERROR_TKN 
+       && dataRespTkn != WRITE_ERROR_TKN;)
   {
-    // send Start Block Token to initiate data transfer
-    sd_sendByteSPI (0xFE); 
-
-    // send data to write to SD card.
-    for (uint16_t i = 0; i < BLOCK_LEN; i++) 
-      sd_sendByteSPI (dataArr[i]);
-
-    // Send 16-bit CRC. 
-    // CRC should be off (default), in which case these do not matter.
-    sd_sendByteSPI (0xFF);
-    sd_sendByteSPI (0xFF);
-    
-    // wait for valid data response token
-    do
-    { 
-      dataRespTkn = sd_receiveByteSPI();
-      if (timeout++ > 0xFE)
-      {
-        CS_SD_HIGH;
-        return (DATA_RESPONSE_TIMEOUT | r1);
-      }
-    }
-    while ((dataTknMask & dataRespTkn) != 0x05 &&          // DATA_ACCEPTED
-           (dataTknMask & dataRespTkn) != 0x0B &&          // CRC_ERROR
-           (dataTknMask & dataRespTkn) != 0x0D);           // WRITE_ERROR
-    
-    // Data Accepted
-    if ((dataRespTkn & 0x05) == 0x05)                         
-    {
-        timeout = 0;
-        
-        // Wait for SD card to finish writing data to the block.
-        // Data Out (DO) line held low while card is busy writing to block.
-        while (sd_receiveByteSPI() == 0) 
-        {
-          if (timeout++ > 0x4FF) 
-          {
-            CS_SD_HIGH;
-            return (CARD_BUSY_TIMEOUT | r1);
-          }
-        };
-        CS_SD_HIGH;
-        return (DATA_ACCEPTED_TOKEN_RECEIVED | r1);
-    }
-
-    // CRC Error
-    else if ((dataRespTkn & 0x0B) == 0x0B) 
+    dataRespTkn = sd_ReceiveByteSPI() & DATA_RESPONSE_TKN_MASK;
+    if (++timeout > TIMEOUT_LIMIT)
     {
       CS_SD_HIGH;
-      return (CRC_ERROR_TOKEN_RECEIVED | r1);
-    }
-
-    // Write Error
-    else if ((dataRespTkn & 0x0D) == 0x0D)
-    {
-      CS_SD_HIGH;
-      return (WRITE_ERROR_TOKEN_RECEIVED | r1);
+      return (DATA_RESPONSE_TIMEOUT | r1);
     }
   }
+  
+  //
+  // if SD card signals the data was accepted by returning the Data Accepted
+  // Token then the card will enter 'busy' state while it writes the data to 
+  // the block. While busy, the card will hold the DO line at 0. If the timeout
+  // limit is reached then the function will return CARD_BUSY_TIMEOUT.
+  //
+  if (dataRespTkn == DATA_ACCEPTED_TKN)
+  { 
+    for (uint16_t timeout = 0; sd_ReceiveByteSPI() == 0; ++timeout)
+      if (timeout > 4 * TIMEOUT_LIMIT)      // increased timeout limit
+      {
+        CS_SD_HIGH;
+        return (CARD_BUSY_TIMEOUT | r1);
+      }
+
+    CS_SD_HIGH;
+    return (DATA_WRITE_SUCCESS | r1);
+  }
+  else if (dataRespTkn == CRC_ERROR_TKN) 
+  {
+    CS_SD_HIGH;
+    return (CRC_ERROR_TKN_RECEIVED | r1);
+  }
+  else if (dataRespTkn == WRITE_ERROR_TKN)
+  {
+  CS_SD_HIGH;
+  return (WRITE_ERROR_TKN_RECEIVED | r1);
+  }
+
   return (INVALID_DATA_RESPONSE | r1) ;
 }
-
 
 /*
  * ----------------------------------------------------------------------------
  *                                                                 ERASE BLOCKS
  * 
- * Description : Erases the blocks between (and including) the startBlckAddr 
- *               and endBlckAddr.
+ * Description : Erases the blocks between (and including) startBlckAddr and
+ *               endBlckAddr.
  * 
- * Arguments   : startBlckAddr     address of the first block to be erased.
- * 
- *               endBlckAddr       address of the last block to be erased.
+ * Arguments   : startBlckAddr   - address of the first block to be erased.
+ *               endBlckAddr     - address of the last block to be erased.
  * 
  * Returns     : Erase Block Error (upper byte) and R1 Response (lower byte).
  * ----------------------------------------------------------------------------
  */
-
-uint16_t sd_eraseBlocks (uint32_t startBlckAddr, uint32_t endBlckAddr)
+uint16_t sd_EraseBlocks(uint32_t startBlckAddr, uint32_t endBlckAddr)
 {
-  uint8_t r1;
-  uint16_t timeout = 0; 
+  uint8_t r1;                               // for R1 responses
   
   // set Start Address for erase block
   CS_SD_LOW;
-  sd_sendCommand (ERASE_WR_BLK_START_ADDR, startBlckAddr);
-  r1 = sd_getR1();
+  sd_SendCommand(ERASE_WR_BLK_START_ADDR, startBlckAddr);
+  r1 = sd_GetR1();
   CS_SD_HIGH;
-  if (r1 > 0) 
+  if (r1 != OUT_OF_IDLE) 
     return (SET_ERASE_START_ADDR_ERROR | R1_ERROR | r1);
   
   // set End Address for erase block
   CS_SD_LOW;
-  sd_sendCommand (ERASE_WR_BLK_END_ADDR, endBlckAddr);
-  r1 = sd_getR1();
+  sd_SendCommand(ERASE_WR_BLK_END_ADDR, endBlckAddr);
+  r1 = sd_GetR1();
   CS_SD_HIGH;
-  if (r1 > 0) 
+  if (r1 != OUT_OF_IDLE) 
     return (SET_ERASE_END_ADDR_ERROR | R1_ERROR | r1);
 
   // erase all blocks between, and including, start and end address
   CS_SD_LOW;
-  sd_sendCommand(ERASE,0);
-  r1 = sd_getR1 ();
-  if(r1 > 0)
+  sd_SendCommand(ERASE, 0);                 // arg = 0 for this command      
+  r1 = sd_GetR1 ();
+  if (r1 != OUT_OF_IDLE)
   {
     CS_SD_HIGH;
     return (ERASE_ERROR | R1_ERROR | r1);
   }
 
-  // wait for card not to finish erasing blocks.
-  while (sd_receiveByteSPI() == 0)
-  {
-    if(timeout++ > 0xFFFE) 
+  // wait for erase to finish. Busy (0) signal returned until erase completes.
+  for (uint16_t timeout = 0; sd_ReceiveByteSPI() == 0; ++timeout)
+    if(timeout++ > 4 * TIMEOUT_LIMIT) 
       return (ERASE_BUSY_TIMEOUT | r1);
-  }
+
   CS_SD_HIGH;
   return ERASE_SUCCESSFUL;
 }
 
-
 /*
- * If either of the three print error functions show that the R1_ERROR flag was
- * set in the error response that was passed to it, then the error response
- * should then be passed to sd_printR1() from SD_SPI_BASE.H/C to read the 
- * R1 Error.
+ * If either of the three print error functions below show that the R1_ERROR 
+ * flag was set in the error response that was passed to it, then the error 
+ * response should also be passed to sd_PrintR1() from SD_SPI_BASE.H/C to read 
+ * the R1 Error.
  */
 
 /*
@@ -348,30 +312,29 @@ uint16_t sd_eraseBlocks (uint32_t startBlckAddr, uint32_t endBlckAddr)
  * 
  * Description : Print Read Error Flag returned by a SD card read function.  
  * 
- * Arguments   : err     Read Error Response.
+ * Arguments   : err   - Read Error Response.
  * 
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void sd_printReadError (uint16_t err)
+void sd_PrintReadError(uint16_t err)
 {
+  // 0xFF00 filters out the lower byte which is the R1 response
   switch (err & 0xFF00)
   {
-    case (R1_ERROR):
-      print_str ("\n\r R1_ERROR");
+    case R1_ERROR:
+      print_Str("\n\r R1_ERROR");
       break;
-    case (READ_SUCCESS):
-      print_str ("\n\r READ_SUCCESS");
+    case READ_SUCCESS:
+      print_Str("\n\r READ_SUCCESS");
       break;
-    case (START_TOKEN_TIMEOUT):
-      print_str ("\n\r START_TOKEN_TIMEOUT");
+    case START_TOKEN_TIMEOUT:
+      print_Str("\n\r START_TOKEN_TIMEOUT");
       break;
     default:
-      print_str ("\n\r UNKNOWN RESPONSE");
+      print_Str("\n\r UNKNOWN RESPONSE");
   }
 }
-
 
 /*
  * ----------------------------------------------------------------------------
@@ -379,42 +342,41 @@ void sd_printReadError (uint16_t err)
  * 
  * Description : Print Write Error Flag returned by a SD card read function.  
  * 
- * Arguments   : err     Write Error Response.
+ * Arguments   : err   - Write Error Response.
  * 
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void sd_printWriteError (uint16_t err)
+void sd_PrintWriteError(uint16_t err)
 {
-  switch(err&0xFF00)
+  // 0xFF00 filters out the lower byte which is the R1 response
+  switch(err & 0xFF00)
   {
-    case (DATA_ACCEPTED_TOKEN_RECEIVED):
-      print_str ("\n\r DATA_ACCEPTED_TOKEN_RECEIVED");
+    case DATA_WRITE_SUCCESS:
+      print_Str("\n\r DATA_WRITE_SUCCESS");
       break;
-    case (CRC_ERROR_TOKEN_RECEIVED):
-      print_str ("\n\r CRC_ERROR_TOKEN_RECEIVED");
+    case CRC_ERROR_TKN_RECEIVED:
+      print_Str("\n\r CRC_ERROR_TKN_RECEIVED");
       break;
-    case (WRITE_ERROR_TOKEN_RECEIVED):
-      print_str ("\n\r WRITE_ERROR_TOKEN_RECEIVED");
+    case WRITE_ERROR_TKN_RECEIVED:
+      print_Str("\n\r WRITE_ERROR_TKN_RECEIVED");
       break;
-    case (INVALID_DATA_RESPONSE):
-      print_str ("\n\r INVALID_DATA_RESPONSE"); // Successful data write
+    case INVALID_DATA_RESPONSE:
+      print_Str("\n\r INVALID_DATA_RESPONSE");
       break;
-    case (DATA_RESPONSE_TIMEOUT):
-      print_str ("\n\r DATA_RESPONSE_TIMEOUT");
+    case DATA_RESPONSE_TIMEOUT:
+      print_Str("\n\r DATA_RESPONSE_TIMEOUT");
       break;
-    case (CARD_BUSY_TIMEOUT):
-      print_str ("\n\r CARD_BUSY_TIMEOUT");
+    case CARD_BUSY_TIMEOUT:
+      print_Str("\n\r CARD_BUSY_TIMEOUT");
       break;
-    case (R1_ERROR):
-      print_str ("\n\r R1_ERROR"); // Successful data write
+    case R1_ERROR:
+      print_Str("\n\r R1_ERROR");
       break;
     default:
-      print_str ("\n\r UNKNOWN RESPONSE");
+      print_Str("\n\r UNKNOWN RESPONSE");
   }
 }
-
 
 /*
  * ----------------------------------------------------------------------------
@@ -422,32 +384,32 @@ void sd_printWriteError (uint16_t err)
  * 
  * Description : Print Erase Error Flag returned by a SD card read function.  
  * 
- * Arguments   : err     Erase Error Response.
+ * Arguments   : err   - Erase Error Response.
  * 
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void sd_printEraseError (uint16_t err)
+void sd_PrintEraseError(uint16_t err)
 {
-  switch(err&0xFF00)
+  // 0xFF00 filters out the lower byte which is the R1 response
+  switch(err & 0xFF00)
   {
-    case (ERASE_SUCCESSFUL):
-      print_str ("\n\r ERASE_SUCCESSFUL");
+    case ERASE_SUCCESSFUL:
+      print_Str("\n\r ERASE_SUCCESSFUL");
       break;
-    case (SET_ERASE_START_ADDR_ERROR):
-      print_str ("\n\r SET_ERASE_START_ADDR_ERROR");
+    case SET_ERASE_START_ADDR_ERROR:
+      print_Str("\n\r SET_ERASE_START_ADDR_ERROR");
       break;
-    case (SET_ERASE_END_ADDR_ERROR):
-      print_str ("\n\r SET_ERASE_END_ADDR_ERROR");
+    case SET_ERASE_END_ADDR_ERROR:
+      print_Str("\n\r SET_ERASE_END_ADDR_ERROR");
       break;
-    case (ERASE_ERROR):
-      print_str ("\n\r ERROR_ERASE");
+    case ERASE_ERROR:
+      print_Str("\n\r ERROR_ERASE");
       break;
-    case (ERASE_BUSY_TIMEOUT):
-      print_str ("\n\r ERASE_BUSY_TIMEOUT");
+    case ERASE_BUSY_TIMEOUT:
+      print_Str("\n\r ERASE_BUSY_TIMEOUT");
       break;
     default:
-      print_str ("\n\r UNKNOWN RESPONSE");
+      print_Str("\n\r UNKNOWN RESPONSE");
   }
 }

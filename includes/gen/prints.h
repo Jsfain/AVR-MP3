@@ -1,10 +1,12 @@
 /*
- * File    : PRINTS.H
- * Version : 0.0.0.2
- * Author  : Joshua Fain
- * Target  : ATMega1280
- * License : MIT
- * Copyright (c) 2020
+ * File       : PRINTS.H
+ * Version    : 2.0
+ * Target     : ATMega1280
+ * Compiler   : AVR-GCC 9.3.0
+ * Downloader : AVRDUDE 6.3
+ * License    : GNU GPLv3
+ * Author     : Joshua Fain
+ * Copyright (c) 2020, 2021
  * 
  * Interface for some print functions used to print strings and unsigned
  * integers in decimal, binary, and hex formats.
@@ -13,10 +15,9 @@
 #ifndef PRINTS_H
 #define PRINTS_H
 
-
 /*
  ******************************************************************************
- *                           FUNCTION PROTOTYPES   
+ *                            FUNCTION PROTOTYPES   
  ******************************************************************************
  */
 
@@ -31,9 +32,7 @@
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void print_dec (uint32_t num);
-
+void print_Dec(uint32_t num);
 
 /*
  * ----------------------------------------------------------------------------
@@ -49,9 +48,7 @@ void print_dec (uint32_t num);
  *               2) A space will be print between every 4-bit group.
  * ----------------------------------------------------------------------------
  */
-
-void print_bin (uint32_t num);
-
+void print_Bin(uint32_t num);
 
 /*
  * ----------------------------------------------------------------------------
@@ -65,9 +62,7 @@ void print_bin (uint32_t num);
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void print_hex (uint32_t num);
-
+void print_Hex(uint32_t num);
 
 /*
  * ----------------------------------------------------------------------------
@@ -82,7 +77,6 @@ void print_hex (uint32_t num);
  *               currently be handled by this function.
  * ----------------------------------------------------------------------------
  */
-
-void print_str (char * str);
+void print_Str(char *str);
 
 #endif //PRINTS_H

@@ -1,19 +1,19 @@
 /*
- * File    : PRINTS.C
- * Version : 0.0.0.2
- * Author  : Joshua Fain
- * Target  : ATMega1280
- * License : MIT
- * Copyright (c) 2020
+ * File       : PRINTS.C
+ * Version    : 2.0
+ * Target     : ATMega1280
+ * Compiler   : AVR-GCC 9.3.0
+ * Downloader : AVRDUDE 6.3
+ * License    : GNU GPLv3
+ * Author     : Joshua Fain
+ * Copyright (c) 2020, 2021
  * 
  * Implementation of PRINTS.H
  */
 
-#include <stdint.h>
 #include <avr/io.h>
 #include "prints.h"
 #include "usart0.h"
-
 
 /*
  ******************************************************************************
@@ -32,31 +32,31 @@
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void print_dec (uint32_t num)
+void print_Dec(uint32_t num)
 {
-  uint8_t cnt = 0;                // count for number of digits required
-  char    arr[10];                // array length is maximum possible digits
+  const uint8_t radix = 10;                 // decimal radix
+  char digit[10];                           // length is max possible digits
+  int  digitCnt = 0;                        // total number of digits required
 
   //
-  // 1) Load remainder of number into array when divided by 10. 
-  // 2) Update the value of the number by dividing itself by 10. 
-  // 3) Repeat until number is 0. 
-  // Note: The array will be loaded in reverse order.
+  // 1) Load last digit (remainder) of num into array when divided by 10.
+  // 2) Update the value of the num by dividing itself by 10.
+  // 4) Repeat until number is 0. 
+  // Note: The array is loaded in reverse order.
   //
-  do
+  for (digitCnt = 0; num > 0; digitCnt++)
   {
-    arr[cnt] = num%10 + 48;       // add 48 to convert to ascii
-    num /= 10;
-    cnt++;  
+    digit[digitCnt] = num % radix + '0';    // add 48 to convert to ascii
+    num /= radix; 
   }
-  while (num > 0);
 
-  // print digits. 
-  for (int i = cnt-1; i >= 0; i--)
-    usart_transmit (arr[i]);
+  // print digits.
+  if (digitCnt == 0)
+    usart_Transmit('0');
+  else
+    for (--digitCnt; digitCnt >= 0; digitCnt--)
+      usart_Transmit(digit[digitCnt]);
 }
-
 
 /*
  * ----------------------------------------------------------------------------
@@ -72,36 +72,36 @@ void print_dec (uint32_t num)
  *               2) A space will be print between every 4-bit group.
  * ----------------------------------------------------------------------------
  */
-
-void print_bin (uint32_t num)
+void print_Bin(uint32_t num)
 {
-  uint8_t cnt = 0;                // count for number of digits required
-  char    arr[32];                // array length is maximum possible digits
+  const uint8_t radix = 2;                  // binary radix
+  char digit[32];                           // length is max possible digits
+  int  digitCnt = 0;                        // total number of digits required
 
   //
-  // 1) Load remainder of number into array when divided by 2. 
-  // 2) Update the value of the number by dividing itself by 2. 
-  // 3) Repeat until number is 0. 
-  // Note: The array will be loaded in reverse order.
+  // 1) Load remainder of number into digit array when divided by 2. 
+  // 2) Update the value of the number by dividing itself by 2.
+  // 4) Repeat until number is 0. 
+  // Note: The array is loaded in reverse order.
   //
-  do
+  for (digitCnt = 0; num > 0; digitCnt++)
   {
-    arr[cnt] = num%2 + 48;        // add 48 to convert to ascii
-    num /= 2;
-    cnt++;
+    digit[digitCnt] = num % radix + '0';    // add 48 to convert to ascii
+    num /= radix; 
   }
-  while (num > 0);
 
-  // print digits
-  for (int i = cnt-1; i >= 0; i--)
-  {
-    usart_transmit (arr[i]);
-    // print space every 4 digits
-    if (i%4 == 0) 
-      usart_transmit (' ');
-  }    
+  // print digits.
+  if (digitCnt == 0)
+    usart_Transmit('0');
+  else
+    for (--digitCnt; digitCnt >= 0; digitCnt--)
+    {
+      usart_Transmit(digit[digitCnt]);
+      // every 4 digit characters print a space
+      if (digitCnt % 4 == 0)
+        usart_Transmit(' ');
+    }
 }
-
 
 /*
  * ----------------------------------------------------------------------------
@@ -115,39 +115,38 @@ void print_bin (uint32_t num)
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void print_hex (uint32_t num)
+void print_Hex(uint32_t num)
 {
-  uint8_t cnt = 0;                // count for number of digits required
-  char    arr[8];                 // array length is maximum possible digits
-       
+  const uint8_t radix = 16;                 // hex radix
+  char digit[8];                            // length is max possible digits
+  int  digitCnt = 0;                        // total number of digits required
+  
   //
-  // 1) Load remainder of number into array when divided by 16. 
-  // 2) Update the value of the number by dividing itself by 16.
-  // 3) Convert the value to an ascii number or letter A-F.
-  // 4) Repeat until number is 0. 
-  // Note: The array will be loaded in reverse order.
+  // 1) Load last digit (remainder) of num into array when divided by radix.
+  // 2) Update the value of num by dividing itself by the radix.
+  // 3) Convert the array value to an ascii number or letter (A-F) character.
+  // 4) Repeat until num is 0. 
+  // Note: The array is loaded in reverse order.
   //
-  do
+  for (digitCnt = 0; num > 0; digitCnt++)
   {
-      arr[cnt] = num % 16;
-      num /= 16;
+    digit[digitCnt] = num % radix;
+    num /= radix;
 
-      // convert to ascii characters
-      if (arr[cnt] < 10)
-        arr[cnt] += 48;         // ascii numbers
-      else
-        arr[cnt] += 55;         // convert 10-15 to ascii A-F
-      
-      cnt++;
+    // convert to ascii characters
+    if (digit[digitCnt] < 10)
+      digit[digitCnt] += '0';               // convert to ascii numbers
+    else
+      digit[digitCnt] += 'A' - 10;          // convert ascii A to F. Offset 10
   }
-  while (num > 0);
 
-  //print digits.
-  for (int i = cnt-1; i >= 0; i--) 
-    usart_transmit (arr[i]);
+  // print digits.
+  if (digitCnt == 0)
+    usart_Transmit('0');
+  else
+    for (--digitCnt; digitCnt >= 0; digitCnt--)
+      usart_Transmit(digit[digitCnt]);
 }    
-
 
 /*
  * ----------------------------------------------------------------------------
@@ -158,18 +157,14 @@ void print_hex (uint32_t num)
  * Argument    : str     Pointer to a null-terminated char array (i.e. string)
  *                       that will be printed to the screen.
  * 
- * Notes       : Strings up to 999 characters + '\0' (null character) can
- *               currently be handled by this function.
+ * Warning     : There is currently no limit on the length of the string but
+ *               if the array is not null-terminiated then it will loop until
+ *               without bounds, until it happens to hit a null in memory.
  * ----------------------------------------------------------------------------
  */
-
-void print_str (char * str)
+void print_Str(char *str)
 {
-  uint16_t cnt = 0;
-  while (str[cnt] != '\0' && cnt <= 1000)
-  {
-    usart_transmit (str[cnt]);
-    cnt++;
-  };
+  for (; *str; str++)
+    usart_Transmit(*str);
 }
 

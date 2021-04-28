@@ -1,10 +1,12 @@
 /*
- * File    : SPI.H
- * Version : 0.0.0.1 
- * Author  : Joshua Fain
- * Target  : ATMega1280
- * License : MIT
- * Copyright (c) 2020
+ * File       : SPI.H
+ * Version    : 1.0 
+ * Target     : ATMega1280
+ * Compiler   : AVR-GCC 9.3.0
+ * Downloader : AVRDUDE 6.3
+ * License    : GNU GPLv3
+ * Author     : Joshua Fain
+ * Copyright (c) 2020, 2021
  * 
  * Interface for interacting with the ATMega's SPI port.
  */
@@ -12,10 +14,9 @@
 #ifndef SPI_H
 #define SPI_H
 
-
 /*
  ******************************************************************************
- *                                    MACROS
+ *                                    MACROS   
  ******************************************************************************
  */
 
@@ -39,10 +40,15 @@
 #define DD_SS1      DDB4
 #define SS1         PB4
 
+// Chip Select 2
+#define DD_SS2      DDB5
+#define SS2         PB5
+
+#define SPI_REG_BIT_LEN      8
 
 /*
  ******************************************************************************
- *                             FUNCTION PROTOTYPES
+ *                              FUNCTION PROTOTYPES
  ******************************************************************************
  */
 
@@ -57,9 +63,7 @@
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void spi_masterInit (void);
-
+void spi_MasterInit(void);
 
 /*
  * ----------------------------------------------------------------------------
@@ -72,9 +76,7 @@ void spi_masterInit (void);
  * Returns     : byte received by the SPI port.
  * ----------------------------------------------------------------------------
  */
-
-uint8_t spi_masterReceive (void);
-
+uint8_t spi_MasterReceive(void);
 
 /*
  * ----------------------------------------------------------------------------
@@ -87,7 +89,6 @@ uint8_t spi_masterReceive (void);
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void spi_masterTransmit (uint8_t byte);
+void spi_MasterTransmit(uint8_t byte);
 
 #endif  //SPI_H

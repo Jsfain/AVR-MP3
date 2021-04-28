@@ -1,17 +1,18 @@
 /*
- * File    : USART0.H
- * Version : 0.0.0.1 
- * Author  : Joshua Fain
- * Target  : ATMega1280
- * License : MIT
- * Copyright (c) 2020
+ * File       : USART0.H
+ * Version    : 1.0 
+ * Target     : ATMega1280
+ * Compiler   : AVR-GCC 9.3.0
+ * Downloader : AVRDUDE 6.3
+ * License    : GNU GPLv3
+ * Author     : Joshua Fain
+ * Copyright (c) 2020, 2021
  * 
  * Interface for interacting with the ATMega's USART0 port.
  */
 
 #ifndef USART0_H
 #define USART0_H
-
 
 /*
  ******************************************************************************
@@ -20,12 +21,11 @@
  */
 
 #ifndef F_CPU
-#define F_CPU           16000000UL             /* clock frequency of target */
-#endif // F_CPU
+#define F_CPU       16000000UL              // default target clock frequency
+#endif //F_CPU
 
-#define BAUD            9600                   /* decimal baud rate */  
-#define UBRR_VALUE      (F_CPU/16/BAUD - 1)    /* calculate value for UBRR */
-
+#define BAUD        9600                    // decimal baud rate
+#define UBRR_VALUE  ((F_CPU/16/BAUD) - 1)   // calculate value for UBRR
 
 /*
  *******************************************************************************
@@ -44,8 +44,7 @@
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void usart_init (void);
+void usart_Init(void);
 
 
 /*
@@ -59,8 +58,7 @@ void usart_init (void);
  * Returns     : byte received by the USART0, i.e. value in UDR0.
  * ----------------------------------------------------------------------------
  */
-
-uint8_t usart_receive (void);
+uint8_t usart_Receive(void);
 
 
 /*
@@ -74,7 +72,6 @@ uint8_t usart_receive (void);
  * Returns     : void
  * ----------------------------------------------------------------------------
  */
-
-void usart_transmit (uint8_t data);
+void usart_Transmit(uint8_t data);
 
 #endif //USART0_H

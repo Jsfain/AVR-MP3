@@ -578,19 +578,19 @@ void lcd_printError(uint8_t err)
   switch (err)
   {
     case LCD_INSTR_SUCCESS:
-      print_str("\n\rLCD_INSTR_SUCCESS");
+      print_Str("\n\rLCD_INSTR_SUCCESS");
       break;
     case INVALID_ARG:
-      print_str("\n\rINVALID_ARGUMENT");
+      print_Str("\n\rINVALID_ARGUMENT");
       break;
     case BUSY_RESET_SUCCESS:
-      print_str("\n\rBUSY_RESET_SUCCESS");
+      print_Str("\n\rBUSY_RESET_SUCCESS");
       break;
     case BUSY_RESET_TIMEOUT:
-      print_str("\n\rBUSY_RESET_TIMEOUT");
+      print_Str("\n\rBUSY_RESET_TIMEOUT");
       break;
     default:
-      print_str("\n\rINVALID LCD ERROR");
+      print_Str("\n\rINVALID LCD ERROR");
       break;
   }
 }

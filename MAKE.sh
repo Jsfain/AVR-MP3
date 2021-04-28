@@ -1,5 +1,8 @@
 clear
 
+#test file
+testFile=mp3_test.c
+
 #directory to store build/compiled files
 buildDir=../untracked/build
 
@@ -18,6 +21,9 @@ genDir=source/gen
 #directory for source files
 sourceDir=source
 
+#directory for source files
+mp3Dir=source/mp3
+
 #directory for test files
 testDir=test
 
@@ -27,13 +33,13 @@ mkdir -p -v $buildDir
 
 t=0.25
 # -g = debug, -Os = Optimize Size
-Compile=(avr-gcc -Wall -g -Os -I "includes/fat" -I "includes/sd" -I "includes/gen" -I "includes/lcd" -DF_CPU=16000000 -mmcu=atmega1280 -c -o)
+Compile=(avr-gcc -Wall -g -Os -I "includes/fat" -I "includes/sd" -I "includes/gen" -I "includes/lcd" -I "includes/mp3" -DF_CPU=16000000 -mmcu=atmega1280 -c -o)
 Link=(avr-gcc -Wall -g -mmcu=atmega1280 -o)
 IHex=(avr-objcopy -j .text -j .data -O ihex)
 
 
-echo -e "\n>> COMPILE: "${Compile[@]}" "$buildDir"/test.o " $testDir"/print_lcd_test.c"
-"${Compile[@]}" $buildDir/test.o $testDir/print_lcd_test.c
+echo -e "\n>> COMPILE: "${Compile[@]}" "$buildDir"/test.o " $testDir"/"$testFile
+"${Compile[@]}" $buildDir/test.o $testDir/$testFile
 status=$?
 sleep $t
 if [ $status -gt 0 ]
@@ -43,6 +49,19 @@ then
     exit $status
 else
     echo -e "Compiling TEST successful"
+fi
+
+echo -e "\n>> COMPILE: "${Compile[@]}" "$buildDir"/mp3.o " $mp3Dir"/mp3.c"
+"${Compile[@]}" $buildDir/mp3.o $mp3Dir/mp3.c
+status=$?
+sleep $t
+if [ $status -gt 0 ]
+then
+    echo -e "error compiling MP3.C"
+    echo -e "program exiting with code $status"
+    exit $status
+else
+    echo -e "Compiling MP3.C successful"
 fi
 
 echo -e "\n>> COMPILE: "${Compile[@]}" "$buildDir"/lcd_base.o " $lcdDir"/lcd_base.c"
@@ -183,8 +202,8 @@ else
 fi
 
 
-echo -e "\n>> LINK: "${Link[@]}" "$buildDir"/test.elf "$buildDir"/_test.o  "$buildDir"/spi.o "$buildDir"/sd_spi_base.o "$buildDir"/sd_spi_rwe.o "$buildDir"/usart0.o "$buildDir"/prints.o "$buildDir"/fat_bpb.o "$buildDir"/fat.o "$buildDir"/fat_to_sd.o" "$buildDir"/lcd_base.o" "$buildDir"/lcd_sf.o"
-"${Link[@]}" $buildDir/test.elf $buildDir/test.o $buildDir/spi.o $buildDir/sd_spi_base.o $buildDir/sd_spi_rwe.o $buildDir/usart0.o $buildDir/prints.o $buildDir/fat.o $buildDir/fat_bpb.o $buildDir/fat_to_sd.o $buildDir/lcd_base.o $buildDir/lcd_sf.o
+echo -e "\n>> LINK: "${Link[@]}" "$buildDir"/test.elf "$buildDir"/_test.o  "$buildDir"/spi.o "$buildDir"/sd_spi_base.o "$buildDir"/sd_spi_rwe.o "$buildDir"/usart0.o "$buildDir"/prints.o "$buildDir"/fat_bpb.o "$buildDir"/fat.o "$buildDir"/fat_to_sd.o" "$buildDir"/lcd_base.o" "$buildDir"/lcd_sf.o" "$buildDir"/mp3.o
+"${Link[@]}" $buildDir/test.elf $buildDir/test.o $buildDir/spi.o $buildDir/sd_spi_base.o $buildDir/sd_spi_rwe.o $buildDir/usart0.o $buildDir/prints.o $buildDir/fat.o $buildDir/fat_bpb.o $buildDir/fat_to_sd.o $buildDir/lcd_base.o $buildDir/lcd_sf.o $buildDir/mp3.o
 status=$?
 sleep $t
 if [ $status -gt 0 ]
